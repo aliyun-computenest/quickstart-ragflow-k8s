@@ -378,6 +378,69 @@ Conditions:
       - Ref: AckNetworkPlugin
       - flannel
 Resources:
+  ElasticPassword:
+    Type: ALIYUN::RandomString
+    Properties:
+      length: 16
+      character_classes:
+        - class: "lowercase"
+          min: 4
+        - class: "uppercase"
+          min: 4
+        - class: "digits"
+          min: 4
+        - class: "symbols"
+          min: 4
+      character_sequences:
+        - sequence: "!@#$^*-+="
+
+  MySQLPassword:
+    Type: ALIYUN::RandomString
+    Properties:
+      length: 16
+      character_classes:
+        - class: "lowercase"
+          min: 4
+        - class: "uppercase"
+          min: 4
+        - class: "digits"
+          min: 4
+        - class: "symbols"
+          min: 4
+      character_sequences:
+        - sequence: "!@#$^*-+="
+
+  MinIOPassword:
+    Type: ALIYUN::RandomString
+    Properties:
+      length: 16
+      character_classes:
+        - class: "lowercase"
+          min: 4
+        - class: "uppercase"
+          min: 4
+        - class: "digits"
+          min: 4
+        - class: "symbols"
+          min: 4
+      character_sequences:
+        - sequence: "!@#$^*-+="
+
+  RedisPassword:
+    Type: ALIYUN::RandomString
+    Properties:
+      length: 16
+      character_classes:
+        - class: "lowercase"
+          min: 4
+        - class: "uppercase"
+          min: 4
+        - class: "digits"
+          min: 4
+        - class: "symbols"
+          min: 4
+      character_sequences:
+        - sequence: "!@#$^*-+="
   VpcModule:
     Condition: CreateClusterCondition
     Type: MODULE::ACS::ComputeNest::VpcAndVSwitch
@@ -446,6 +509,10 @@ Resources:
   FluxHelmApplicationModule:
     DependsOn:
       - AckOrAcsClusterModule
+      - ElasticPassword
+      - MySQLPassword
+      - MinIOPassword
+      - RedisPassword
     Type: MODULE::ACS::ComputeNest::FluxOciHelmDeploy
     Version: default
     Properties:
@@ -455,10 +522,37 @@ Resources:
           - ClusterId
       HelmChartUrl: '{{ computenest::helmchart::quickstart-ragflow-k8s }}'
       ChartValues:
-        {}
+        env:
+          DOC_ENGINE:
+            Fn::If:
+              - Fn::Equals:
+                  - Ref: EngineOption
+                  - Elasticsearch
+              - elasticsearch
+              - infinity
+          STACK_VERSION: "8.11.3"
+          ELASTIC_PASSWORD:
+            Fn::GetAtt:
+              - ElasticPassword
+              - value
+          MYSQL_PASSWORD:
+            Fn::GetAtt:
+              - MySQLPassword
+              - value
+          MYSQL_DBNAME: rag_flow
+          MINIO_ROOT_USER: rag_flow
+          MINIO_PASSWORD:
+            Fn::GetAtt:
+              - MinIOPassword
+              - value
+          REDIS_PASSWORD:
+            Fn::GetAtt:
+              - RedisPassword
+              - value
       Namespace:
         Ref: 'ALIYUN::StackName'
       ReleaseName: ragflow
+
 Outputs:
   UpdateDesc:
     Description:
