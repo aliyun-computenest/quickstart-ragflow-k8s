@@ -1,0 +1,13 @@
+ChartValues: {}
+HelmChartPath: helm
+RuntimeType: Kubernetes
+ServiceType: private
+ArtifactSourceType: HelmChart
+ServiceBuildRegion: ap-southeast-1
+RepoName: aliyun-computenest/quickstart-ragflow-k8s
+RegionId: cn-hangzhou
+CustomParameters: ''
+OutputType: SetAfterCreated
+Owner: LYH-RAIN
+Branch: main
+Platform: github

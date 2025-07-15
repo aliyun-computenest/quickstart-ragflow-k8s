@@ -1,0 +1,16 @@
+templateName: 容器集群版
+regionId: cn-hangzhou
+parameters:
+  CsOptions: "ExistCs"
+  VpcCidrBlock: "192.168.0.0/16"
+  PodCidr: "10.0.0.0/16"
+  ClusterId: "Please fill in"
+  VpcOption: "NewVPC"
+  ServiceCidr: "172.16.0.0/16"
+  WorkerInstanceCount: 3
+  PayType: "PostPaid"
+  VSwitchCidrBlock: "192.168.0.0/24"
+  AckNetworkPlugin: "flannel"
+  LoginPassword: "$[iact3-auto]"
+  WorkerInstanceType: "Please fill in"
+caseId: stc-08e9027024074df59b18
