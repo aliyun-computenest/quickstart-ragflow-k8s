@@ -2,7 +2,36 @@ ROSTemplateFormatVersion: '2015-09-01'
 Description:
   en: 使用Helm Chart进行应用部署,同时支持Ack、Acs集群
   zh-cn: Use Helm Chart for application deployment, and support Ack and Acs clusters
+
 Parameters:
+  PublicAccessEnabled:
+    Type: Boolean
+    Label:
+      en: Enable Public Access
+      zh-cn: 启用公网访问
+    Description:
+      en: Whether to enable public access to RAGFlow service
+      zh-cn: 是否启用RAGFlow服务的公网访问
+    Default: false
+  EngineOption:
+    Type: String
+    AllowedValues:
+      - infinity
+      - Elasticsearch
+    AssociationPropertyMetadata:
+      ValueLabelMapping:
+        infinity:
+          zh-cn: Infinity引擎
+          en: Infinity Engine
+        Elasticsearch:
+          zh-cn: Elasticsearch引擎
+          en: Elasticsearch Engine
+    Label:
+      en: Engine Option
+      zh-cn: 引擎选项
+    Required: true
+    Default: infinity
+
   CsOptions:
     Type: String
     AllowedValues:
@@ -365,6 +394,10 @@ Parameters:
               - ExistCs
     Default: 172.16.0.0/16
 Conditions:
+  PublicAccessCondition:
+    Fn::Equals:
+      - Ref: PublicAccessEnabled
+      - true
   CreateClusterCondition:
     Fn::Or:
       - Fn::Equals:
@@ -377,19 +410,21 @@ Conditions:
     Fn::Equals:
       - Ref: AckNetworkPlugin
       - flannel
+  ElasticsearchEngineCondition:
+    Fn::Equals:
+      - Ref: EngineOption
+      - Elasticsearch
 Resources:
   ElasticPassword:
     Type: ALIYUN::RandomString
     Properties:
-      length: 16
+      length: 13
       character_classes:
         - class: "lowercase"
           min: 4
         - class: "uppercase"
           min: 4
         - class: "digits"
-          min: 4
-        - class: "symbols"
           min: 4
       character_sequences:
         - sequence: "!@#$^*-+="
@@ -397,15 +432,13 @@ Resources:
   MySQLPassword:
     Type: ALIYUN::RandomString
     Properties:
-      length: 16
+      length: 13
       character_classes:
         - class: "lowercase"
           min: 4
         - class: "uppercase"
           min: 4
         - class: "digits"
-          min: 4
-        - class: "symbols"
           min: 4
       character_sequences:
         - sequence: "!@#$^*-+="
@@ -413,15 +446,13 @@ Resources:
   MinIOPassword:
     Type: ALIYUN::RandomString
     Properties:
-      length: 16
+      length: 13
       character_classes:
         - class: "lowercase"
           min: 4
         - class: "uppercase"
           min: 4
         - class: "digits"
-          min: 4
-        - class: "symbols"
           min: 4
       character_sequences:
         - sequence: "!@#$^*-+="
@@ -429,15 +460,13 @@ Resources:
   RedisPassword:
     Type: ALIYUN::RandomString
     Properties:
-      length: 16
+      length: 13
       character_classes:
         - class: "lowercase"
           min: 4
         - class: "uppercase"
           min: 4
         - class: "digits"
-          min: 4
-        - class: "symbols"
           min: 4
       character_sequences:
         - sequence: "!@#$^*-+="
@@ -525,11 +554,9 @@ Resources:
         env:
           DOC_ENGINE:
             Fn::If:
-              - Fn::Equals:
-                  - Ref: EngineOption
-                  - Elasticsearch
-              - elasticsearch
-              - infinity
+              - ElasticsearchEngineCondition
+              - "elasticsearch"
+              - "infinity"
           STACK_VERSION: "8.11.3"
           ELASTIC_PASSWORD:
             Fn::GetAtt:
@@ -539,8 +566,8 @@ Resources:
             Fn::GetAtt:
               - MySQLPassword
               - value
-          MYSQL_DBNAME: rag_flow
-          MINIO_ROOT_USER: rag_flow
+          MYSQL_DBNAME: "rag_flow"
+          MINIO_ROOT_USER: "rag_flow"
           MINIO_PASSWORD:
             Fn::GetAtt:
               - MinIOPassword
@@ -549,9 +576,68 @@ Resources:
             Fn::GetAtt:
               - RedisPassword
               - value
+          RAGFLOW_IMAGE: "infiniflow/ragflow:v0.19.1-slim"
+          TIMEZONE: "Asia/Shanghai"
+          DOC_BULK_SIZE: 4
+          EMBEDDING_BATCH_SIZE: 16
       Namespace:
         Ref: 'ALIYUN::StackName'
       ReleaseName: ragflow
+  PublicService:
+    Condition: PublicAccessCondition
+    Type: ALIYUN::CS::ClusterApplication
+    DependsOn:
+      - FluxHelmApplicationModule
+    Properties:
+      ClusterId:
+        Fn::GetAtt:
+          - AckOrAcsClusterModule
+          - ClusterId
+      DefaultNamespace:
+        Ref: 'ALIYUN::StackName'
+      YamlContent:
+        Fn::Sub:
+          - |
+            apiVersion: v1
+            kind: Service
+            metadata:
+              annotations:
+                service.beta.kubernetes.io/alibaba-cloud-loadbalancer-address-type: "internet"
+                service.beta.kubernetes.io/alibaba-cloud-loadbalancer-ip-version: ipv4
+              labels:
+                app.kubernetes.io/name: ragflow
+                app.kubernetes.io/instance: ragflow
+                app.kubernetes.io/component: ragflow
+                app.kubernetes.io/managed-by: Helm
+                helm.sh/chart: ragflow-0.1.0
+              name: ${ReleaseName}-public
+              namespace: ${Namespace}
+            spec:
+              externalTrafficPolicy: Local
+              ports:
+                - name: http
+                  port: 80
+                  protocol: TCP
+                  targetPort: 80
+              selector:
+                app.kubernetes.io/name: ragflow
+                app.kubernetes.io/instance: ragflow
+                app.kubernetes.io/component: ragflow
+              type: LoadBalancer
+          - ReleaseName: ragflow
+            Namespace:
+              Ref: 'ALIYUN::StackName'
+      WaitUntil:
+        - Kind: Service
+          Name: ragflow-public
+          Namespace:
+            Ref: 'ALIYUN::StackName'
+          JsonPath: $.status.loadBalancer.ingress[0]
+          Operator: Exists
+          Timeout: 300
+          Stage: Create/Update
+
+
 
 Outputs:
   UpdateDesc:
@@ -580,6 +666,27 @@ Outputs:
               - Fn::Split:
                   - ':'
                   - '{{ computenest::helmchart::quickstart-ragflow-k8s }}'
+  AccessInfo:
+    Description:
+      zh-cn: 访问信息
+      en: Access Information
+    Value:
+      Fn::If:
+        - PublicAccessCondition
+        - Fn::Sub:
+            - |
+              RAGFlow service is configured for public access via ${ServiceType}.
+              Please check the service status in your Kubernetes cluster to get the external IP/endpoint.
+              Namespace: ${Namespace}
+              Service Name: ragflow
+            - ServiceType:
+                Ref: PublicServiceType
+              Namespace:
+                Ref: 'ALIYUN::StackName'
+        - |
+          RAGFlow service is configured for internal access only (ClusterIP).
+          Use kubectl port-forward to access the service locally.
+
 Metadata:
   ALIYUN::ROS::Interface:
     ParameterGroups:
@@ -618,6 +725,12 @@ Metadata:
           - VSwitchId
           - VpcCidrBlock
           - VSwitchCidrBlock
+          - PublicAccessEnabled
         Label:
           en: Basic Configuration
           zh-cn: 基础配置
+      - Parameters:
+          - EngineOption
+        Label:
+          en: Ragflow Configuration
+          zh-cn: Ragflow配置
